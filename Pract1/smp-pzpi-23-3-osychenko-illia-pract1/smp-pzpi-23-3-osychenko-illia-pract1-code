@@ -1,0 +1,98 @@
+#!/bin/bash
+
+show_help() {
+    echo "Використання:"
+    echo "  $0 <ширина> <висота>    Малювання ялинки заданих розмірів"
+}
+
+cycle_character() {
+    local current_char=$1
+    if [ "$current_char" = "*" ]; then
+        echo "#"
+    else
+        echo "*"
+    fi
+}
+
+format_row() {
+    local symbol=$1
+    local symbol_width=$2
+    local total_width=$3
+    local spaces=$(((total_width - symbol_width) / 2))
+
+    for ((i = 0; i < spaces; i++)); do
+        echo -n " "
+    done
+
+    for ((i = 0; i < symbol_width; i++)); do
+        echo -n "$symbol"
+    done
+
+    echo
+}
+
+show_tree() {
+    local width=$1
+    local height=$2
+    local branch_char="*"
+
+    if [ $((width % 2)) -eq 1 ]; then
+        width=$((width - 1))
+    fi
+
+    if [ $((height % 2)) -eq 0 ]; then
+        height=$((height - 1))
+    fi
+
+    if [ $width -le 7 ] || [ $height -ne $((width - 1)) ]; then
+        return 1
+    fi
+
+    local top_half_height=$(((width - 3) / 2))
+    local center_padding=$((height / 2))
+
+    format_row "$branch_char" 1 $width
+
+    for level in 0 1; do
+        for ((row = 0; row < top_half_height; row++)); do
+            branch_char=$(cycle_character "$branch_char")
+            format_row "$branch_char" $((row * 2 + 3)) $width
+        done
+    done
+
+    local trunk_count=0
+    while [ $trunk_count -lt 2 ]; do
+        format_row "#" 3 $width
+        trunk_count=$((trunk_count + 1))
+    done
+
+    snow=""
+    i=0
+    until [ $i -ge $height ]; do
+        snow+="*"
+        i=$((i + 1))
+    done
+    echo "$snow"
+
+    return 0
+}
+
+if [ $# -ne 2 ]; then
+    show_help
+    exit 1
+fi
+
+width=$1
+height=$2
+
+if [ $width -le 0 ] || [ $height -le 0 ]; then
+    echo "ПОМИЛКА! Неможливо зобразити ялинку. Обидва аргументи мають бути додатніми цілими числами." >&2
+    exit 2
+fi
+
+if show_tree $width $height; then
+    exit 0
+else
+    echo "ПОМИЛКА! Неможливо зобразити ялинку. Переконайтеся, що ширина > 7 і висота == ширина - 1." >&2
+    exit 3
+fi

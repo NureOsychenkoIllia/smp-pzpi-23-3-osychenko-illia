@@ -1,0 +1,737 @@
+МІНІСТЕРСТВО ОСВІТИ І НАУКИ УКРАЇНИ
+ХАРКІВСЬКИЙ НАЦІОНАЛЬНИЙ УНІВЕРСИТЕТ РАДІОЕЛЕКТРОНІКИ
+Кафедра програмної інженерії
+Звіт
+з лабораторної роботи № 1
+з дисципліни: «Скриптові мови програмування»
+Виконав:
+ст. гр. ПЗПІ-23-3
+Осиченко І.О.
+Перевірив:
+ст. викл. каф. ПІ
+Сокорчук І. П.
+Харків – 2025
+
+1.1 Постановка задачі
+Необхідно розробити Bash-скрипт, який обробляє експортований із сайту https://cist.nure.ua/ розклад занять для всіх груп потоку в форматі CSV та перетворює його у формат CSV для завантаження в Google Календар.
+Вимоги до скрипта:
+– Обробка вхідних параметрів: академічна група (шаблон) та файл розкладу
+– Реалізація ключів: –help, –version, -q/–quiet
+– Створення інтерактивного меню для вибору файлу та групи (якщо не вказані параметри)
+– Фільтрація рядків, що відповідають вибраній академічній групі
+– Визначення порядкового номеру для кожного заняття з урахуванням того, що лабораторні роботи складаються з двох пар
+– Форматування даних (дата, час) відповідно до вимог Google Календаря (12-годинний формат)
+– Запис результату в новий CSV файл
+– Обробка потенційних помилок
+
+1.2 Хід роботи
+1.2.1 Створення Bash-скрипту
+Створимо відповідний файл скрипта, в якому реалізуватимемо алгоритм конвертації CSV-файлів. Для цього відкриємо термінал та виконаємо команду:
+ touch pzpi-23-3-osychenko-illia-task2
+Встановимо відповідні права доступу до файлу та зробимо його виконуваним:
+ chmod 755 pzpi-23-3-osychenko-illia-task2
+ chmod +x pzpi-23-3-osychenko-illia-task2
+
+1.2.2 Створення функцій для відображення довідки та версії
+Створимо функції show_help та show_version, які виводитимуть повідомлення з інструкцією по використанню скрипта та інформацію про версію відповідно:
+
+ 1 #!/bin/bash
+ 2
+ 3 VERSION="1.0.0"
+ 4
+ 5 show_help() {
+ 6 cat <<EOF
+ 7 Використання: $0 [ПАРАМЕТРИ] [академ_група] [файл_із_cist.csv]
+ 8
+ 9 Конвертує файл CSV з розкладом, експортований з CIST, у формат Google Calendar.
+ 10
+ 11 Параметри:
+ 12 --help Показати цю довідку та вийти
+ 13 --version Показати інформацію про версію та вийти
+ 14 -q, --quiet Не виводити інформацію в stdout
+ 15
+ 16 Параметри:
+ 17 академ_група Шаблон назви академічної групи
+ 18 файл_із_cist.csv Експортований CSV файл з розкладом
+ 19
+ 20 Якщо академічна група або вхідний CSV файл не вказані, скрипт
+ 21 надасть інтерактивні меню для їх вибору.
+ 22
+ 23 Приклади:
+ 24 $0 ПЗПІ-23-1 TimeTable_03_04_2025.csv
+ 25 $0 --quiet ПЗПІ-23-1 TimeTable_03_04_2025.csv
+ 26 $0 --help
+ 27 EOF
+ 28 exit 0
+ 29 }
+ 30
+ 31 show_version() {
+ 32 echo "$0 версія $VERSION"
+ 33 exit 0
+ 34 }
+
+1.2.3 Створення функцій для обробки помилок та інтерактивного вибору
+Реалізуємо функцію show_error для виведення повідомлень про помилки у стандартний потік помилок та функції select_file і select_group для інтерактивного вибору файлу та академічної групи:
+
+ 36 show_error() {
+ 37 echo "Помилка: $1" >&2
+ 38 exit 1
+ 39 }
+ 40
+ 41 select_file() {
+ 42 local file_list=$(ls -1 TimeTable_??_??_20??.csv 2>/dev/null | sort)
+ 43
+ 44 if [ -z "$file_list" ]; then
+ 45 show_error "У поточній директорії не знайдено CSV файлів з розкладом."
+ 46 fi
+ 47
+ 48 PS3="Виберіть файл (введіть номер): "
+ 49 select file in $file_list; do
+ 50 if [ -n "$file" ]; then
+ 51 echo "$file"
+ 52 break
+ 53 else
+ 54 echo "Невірний вибір. Спробуйте ще раз."
+ 55 fi
+ 56 done
+ 57 }
+
+Функція select_file використовує команду ls з шаблоном для пошуку CSV-файлів розкладу, а потім створює інтерактивне меню за допомогою команди select.
+Функція select_group витягує з файлу унікальні назви груп і також створює меню для їх вибору. Особливістю реалізації є необхідність конвертації кодування з CP1251 в UTF-8, оскільки файли з CIST зазвичай зберігаються в кодуванні Windows:
+
+ 59 select_group() {
+ 60 local file=$1
+ 61 local temp_file="${file}.temp"
+ 62
+ 63 if ! iconv -f CP1251 -t UTF-8 "$file" >"$temp_file" 2>/dev/null; then
+ 64 rm -f "$temp_file"
+ 65 show_error "Не вдалося конвертувати кодування файлу з CP1251 в UTF-8."
+ 66 fi
+ 67
+ 68 # витягує унікальні назви груп з поля "Тема"
+ 69 local groups=$(sed 's/\r/\n/g' <"$temp_file" | awk -F '","' 'NR>1 {
+ 70 tema = $1; gsub(/^"|"$/, "", tema);
+ 71 
+ 72 first_word = "";
+ 73 for (i = 1; i <= length(tema); i++) {
+ 74 c = substr(tema, i, 1);
+ 75 if (c == " ") break;
+ 76 first_word = first_word c;
+ 77 }
+ 78 
+ 79 # перевіряємо чи є два дефіси (типовий формат групи, наприклад ПЗПІ-23-1)
+ 80 dash_count = 0;
+ 81 for (i = 1; i <= length(first_word); i++) {
+ 82 if (substr(first_word, i, 1) == "-") {
+ 83 dash_count++;
+ 84 }
+ 85 }
+ 86 
+ 87 if (dash_count == 2) {
+ 88 print first_word;
+ 89 }
+ 90 }' | sort | uniq)
+
+В даному фрагменті коду звернемо увагу на використання sed 's/\r/\n/g'. Це необхідно через те, що файли, експортовані з CIST (який працює на FreeBSD), можуть використовувати символ повернення каретки (CR, \r) для позначення кінця рядка замість стандартного переносу рядка (LF, \n) або їх комбінації (CRLF, \r\n), що властиво Windows. Цей рядок забезпечує коректну обробку таких файлів на системах Linux.
+
+1.2.4 Створення основної функції обробки файлу
+Реалізуємо функцію process_file, яка є основою скрипта і виконує основну логіку конвертації файлу:
+
+112 process_file() {
+113 local file=$1
+114 local group=$2
+115 local quiet=$3
+116
+117 if [ ! -f "$file" ]; then
+118 show_error "Файл $file не знайдено."
+119 fi
+120
+121 if [ ! -r "$file" ]; then
+122 show_error "Файл $file неможливо прочитати."
+123 fi
+124
+125 local date_part=$(echo "$file" | grep -o "[0-9]\+_[0-9]\+_[0-9]\+")
+126 local output_file="Google_TimeTable_${date_part}.csv"
+127 local temp_file="Google_TimeTable_${date_part}.csv.tmp"
+
+Функція спочатку перевіряє наявність і читабельність файлу, а потім визначає імена вихідного та тимчасового файлів на основі дати з оригінального імені файлу.
+Далі виконується конвертація кодування та фільтрація рядків, що стосуються вибраної групи:
+
+129 if ! iconv -f CP1251 -t UTF-8 "$file" >"$temp_file" 2>/dev/null; then
+130 rm -f "$temp_file"
+131 show_error "Не вдалося конвертувати кодування файлу з CP1251 в UTF-8."
+132 fi
+133
+134 sed 's/\r/\n/g' < "$temp_file" |awk -F '","' -v group="$group" '
+135 # заголовок
+136 NR == 1 {
+137 print $0;
+138 next;
+139 }
+140 
+141 # обробляємо решту рядків
+142 NR > 1 {
+143 tema = $1;
+144 gsub(/^"|"$/, "", tema);
+145 first_word = "";
+146 for (i = 1; i <= length(tema); i++) {
+147 c = substr(tema, i, 1);
+148 if (c == " ") break;
+149 first_word = first_word c;
+150 }
+151 if (first_word == group) {
+152 print $0;
+153 }
+154 }
+155 ' |
+156 sed 's/","/|/g' |
+157 sort -t'|' \
+158 -k2.7,2.10n \
+159 -k2.4,2.5n \
+160 -k2.1,2.2n \
+161 -k3.1,3.2n \
+162 -k3.4,3.5n | 
+163 sed 's/|/","/g' > "$temp_file.sorted"
+
+Додатково використаємо sed для заміни символів "," на |, що дозволяє уникнути проблем з використанням sort з багатосимвольними роздільниками.
+Після фільтрації рядків виконується сортування за датою та часом початку. Це забезпечує правильний порядок занять у вихідному файлі.
+Далі створюється заголовок вихідного CSV-файлу та виконується основна обробка даних:
+
+165 echo "Subject,Start Date,Start Time,End Date,End Time" >"$output_file"
+166
+167 awk -v FS='","' -v group="$group" '
+168 BEGIN {
+169 OFS = ",";
+170 }
+171
+172 NR > 1 {
+173 tema = $1;
+174 gsub(/^"|"$/, "", tema);
+175
+176 subject = "";
+177 group_prefix = group " -";
+178 if (index(tema, group_prefix) == 1) {
+179 subject = substr(tema, length(group_prefix) + 1);
+180 } else if (index(tema, "- ") == 1) {
+181 subject = substr(tema, 3);
+182 } else {
+183 subject = tema;
+184 }
+
+Як сепаратор використаємо ",", що забезпечить коректну обробку окремих полів CSV-файлу з комами всередині рядків. Цей фрагмент видаляє назву групи з теми заняття, щоб створити відформатоване за вимогами поле Subject.
+Особливу увагу приділимо на обробці номерів занять, зокрема лабораторних робіт:
+
+186 sub(/^[ \t]+/, "", subject);
+187 date = $2;
+188 
+189 # визначаємо тип заняття і оновлюємо лічильник для предмета
+190 if (index(tema, "Лк") > 0) {
+191 class_type = "Лк";
+192 count[subject, class_type]++;
+193 class_num = count[subject, class_type];
+194 }
+195 else if (index(tema, "Пз") > 0) {
+196 class_type = "Пз";
+197 count[subject, class_type]++;
+198 class_num = count[subject, class_type];
+199 }
+200 else if (index(tema, "Лб") > 0) {
+201 class_type = "Лб";
+202 if (date SUBSEP subject in lab_date) {
+203 # той самий день що й попередня лабораторна, використовуємо той самий номер
+204 class_num = lab_date[date, subject];
+205 } else {
+206 class_type = "Лб";
+207 count[subject, class_type]++;
+208 class_num = count[subject, class_type];
+209 }
+210 # зберігаємо дату останньої лабораторної
+211 lab_date[date, subject] = count[subject, class_type];
+212 }
+
+У ХНУРЕ лабораторна робота зазвичай триває дві пари, які проходять в один день. При цьому в розкладі вони представлені як два окремі заняття. Скрипт аналізує дату заняття і, якщо вже було лабораторне заняття з цього предмета в цей день, присвоює обом заняттям однаковий номер. Це дозволяє коректно відобразити, що це одна лабораторна робота, яка триває дві пари.
+Далі виконується форматування дати та часу відповідно до вимог Google Calendar:
+
+230 # форматуємо дати і час для формату Google Calendar
+231 split($2, start_date, "\\.");
+232 
+233 start_day = start_date[1] + 0;
+234 start_month = start_date[2] + 0;
+235 start_year = start_date[3] + 0;
+236 
+237 # перевіряємо на валідні компоненти дати (уникаємо 00/00/0000)
+238 if (start_day < 1 || start_month < 1 || start_year < 1) {
+239 start_date_formatted = "";
+240 } else {
+241 start_date_formatted = sprintf("%02d/%02d/%04d", start_month, start_day, start_year);
+242 }
+243 
+244 split($3, start_time, ":");
+245 start_hour = start_time[1] + 0;
+246 start_minute = start_time[2] + 0;
+247 
+248 # конвертація в 12-годинний формат
+249 if (start_hour > 12) {
+250 am_pm = "PM";
+251 display_hour = start_hour - 12;
+252 } else if (start_hour == 12) {
+253 am_pm = "PM";
+254 display_hour = 12;
+255 } else if (start_hour == 0) {
+256 am_pm = "AM";
+257 display_hour = 12;
+258 } else {
+259 am_pm = "AM";
+260 display_hour = start_hour;
+261 }
+
+У цьому фрагменті відбувається конвертація дати з формату «ДД.ММ.РРРР» у формат «ММ/ДД/РРРР» та часу з 24-годинного у 12-годинний формат з додаванням суфіксів AM/PM, що відповідає формату Google Calendar.
+
+1.2.5 Створення основного блоку обробки аргументів
+Реалізуємо основний блок коду для обробки аргументів командного рядка:
+
+325 quiet="false"
+326 while [ $# -gt 0 ]; do
+327 case "$1" in
+328 --help)
+329 show_help
+330 ;;
+331 --version)
+332 show_version
+333 ;;
+334 -q | --quiet)
+335 quiet="true"
+336 shift
+337 ;;
+338 *)
+339 break
+340 ;;
+341 esac
+342 done
+343
+344 group="$1"
+345 file="$2"
+346
+347 if [ -z "$file" ]; then
+348 file=$(select_file)
+349 fi
+350
+351 if [ -z "$group" ]; then
+352 group=$(select_group "$file")
+353 fi
+354
+355 process_file "$file" "$group" "$quiet"
+356
+357 exit 0
+
+Цей блок обробляє аргументи командного рядка, визначає режим роботи скрипта (виводити інформацію чи ні) та викликає відповідні функції для вибору файлу та групи, якщо вони не вказані як аргументи.
+
+1.2.6 Тестування скрипта
+Для тестування скрипта виконаємо наступні команди:
+ ./pzpi-23-3-osychenko-illia-task2 --help
+Отримуємо довідку про використання скрипта:
+
+Використання: ./pzpi-23-3-osychenko-illia-task2 [ПАРАМЕТРИ] [академ_група] [файл_із_cist.csv]
+Конвертує файл CSV з розкладом, експортований з CIST, у формат Google Calendar.
+
+Параметри:
+ --help Показати цю довідку та вийти
+ --version Показати інформацію про версію та вийти
+ -q, --quiet Не виводити інформацію в stdout
+
+Параметри:
+ академ_група Шаблон назви академічної групи
+ файл_із_cist.csv Експортований CSV файл з розкладом
+
+Якщо академічна група або вхідний CSV файл не вказані, скрипт
+надасть інтерактивні меню для їх вибору.
+
+Приклади:
+ ./pzpi-23-3-osychenko-illia-task2 ПЗПІ-23-1 TimeTable_03_04_2025.csv
+ ./pzpi-23-3-osychenko-illia-task2 --quiet ПЗПІ-23-1 TimeTable_03_04_2025.csv
+ ./pzpi-23-3-osychenko-illia-task2 --help
+
+Тепер виконаємо конвертацію розкладу для конкретної групи:
+ ./pzpi-23-3-osychenko-illia-task2 ПЗПІ-23-3 TimeTable_03_04_2025.csv
+Скрипт успішно обробляє файл та створює новий файл Google_TimeTable_03_04_2025.csv з відформатованим розкладом для групи ПЗПІ-23-3.
+
+Перевіримо працездатність скрипта для різних сценаріїв:
+а) Сценарій з неіснуючим файлом:
+ ./pzpi-23-3-osychenko-illia-task2 ПЗПІ-23-3 неіснуючий_файл.csv
+Отримуємо повідомлення про помилку:
+ Помилка: Файл неіснуючий_файл.csv не знайдено.
+
+б) Сценарій з неіснуючою групою:
+ ./pzpi-23-3-osychenko-illia-task2 НЕІСНУЮЧА-ГРУПА TimeTable_03_04_2025.csv
+Отримуємо повідомлення:
+ Увага: Для групи НЕІСНУЮЧА-ГРУПА у файлі TimeTable_03_04_2025.csv не знайдено записів.
+І скрипт пропонує інтерактивно вибрати іншу групу.
+
+в) Сценарій з використанням ключа –quiet:
+ ./pzpi-23-3-osychenko-illia-task2 -q ПЗПІ-23-3 TimeTable_03_04_2025.csv
+Скрипт виконує конвертацію без виведення даних у стандартний потік виведення, але все одно створює вихідний файл.
+
+Всі тести пройшли успішно, скрипт працює згідно з вимогами та доступний на віддаленому сервері для виконання
+
+Висновок
+У ході виконання лабораторної роботи було розроблено Bash-скрипт для конвертації CSV файлу з розкладом занять, експортованого з системи CIST, у формат, придатний для імпорту в Google Календар. Скрипт успішно обробляє аргументи командного рядка, забезпечує інтерактивний вибір файлу та академічної групи, фільтрує дані за вибраною групою, форматує дати та часи відповідно до вимог Google Календаря, правильно нумерує заняття (враховуючи особливості лабораторних робіт, які тривають дві пари) та зберігає результат у новий CSV файл. Проведені тести підтвердили коректність роботи скрипта для різних сценаріїв використання, включаючи обробку помилок при відсутності файлу або групи. Розроблений скрипт повністю відповідає поставленим вимогам та може бути використаний для автоматизації процесу імпорту розкладу занять у Google Календар.
+
+ДОДАТОК А
+Код створеного скрипту
+ 1 #!/bin/bash
+ 2
+ 3 VERSION="1.0.0"
+ 4
+ 5 show_help() {
+ 6 cat <<EOF
+ 7 Використання: $0 [ПАРАМЕТРИ] [академ_група] [файл_із_cist.csv]
+ 8
+ 9 Конвертує файл CSV з розкладом, експортований з CIST, у формат Google Calendar.
+ 10
+ 11 Параметри:
+ 12 --help Показати цю довідку та вийти
+ 13 --version Показати інформацію про версію та вийти
+ 14 -q, --quiet Не виводити інформацію в stdout
+ 15
+ 16 Параметри:
+ 17 академ_група Шаблон назви академічної групи
+ 18 файл_із_cist.csv Експортований CSV файл з розкладом
+ 19
+ 20 Якщо академічна група або вхідний CSV файл не вказані, скрипт
+ 21 надасть інтерактивні меню для їх вибору.
+ 22
+ 23 Приклади:
+ 24 $0 ПЗПІ-23-1 TimeTable_03_04_2025.csv
+ 25 $0 --quiet ПЗПІ-23-1 TimeTable_03_04_2025.csv
+ 26 $0 --help
+ 27 EOF
+ 28 exit 0
+ 29 }
+ 30
+ 31 show_version() {
+ 32 echo "$0 версія $VERSION"
+ 33 exit 0
+ 34 }
+ 35
+ 36 show_error() {
+ 37 echo "Помилка: $1" >&2
+ 38 exit 1
+ 39 }
+ 40
+ 41 select_file() {
+ 42 local file_list=$(ls -1 TimeTable_??_??_20??.csv 2>/dev/null | sort)
+ 43
+ 44 if [ -z "$file_list" ]; then
+ 45 show_error "У поточній директорії не знайдено CSV файлів з розкладом."
+ 46 fi
+ 47
+ 48 PS3="Виберіть файл (введіть номер): "
+ 49 select file in $file_list; do
+ 50 if [ -n "$file" ]; then
+ 51 echo "$file"
+ 52 break
+ 53 else
+ 54 echo "Невірний вибір. Спробуйте ще раз."
+ 55 fi
+ 56 done
+ 57 }
+ 58
+ 59 select_group() {
+ 60 local file=$1
+ 61 local temp_file="${file}.temp"
+ 62
+ 63 if ! iconv -f CP1251 -t UTF-8 "$file" >"$temp_file" 2>/dev/null; then
+ 64 rm -f "$temp_file"
+ 65 show_error "Не вдалося конвертувати кодування файлу з CP1251 в UTF-8."
+ 66 fi
+ 67
+ 68 # витягує унікальні назви груп з поля "Тема"
+ 69 local groups=$(sed 's/\r/\n/g' <"$temp_file" | awk -F '","' 'NR>1 {
+ 70 tema = $1; gsub(/^"|"$/, "", tema);
+ 71 
+ 72 first_word = "";
+ 73 for (i = 1; i <= length(tema); i++) {
+ 74 c = substr(tema, i, 1);
+ 75 if (c == " ") break;
+ 76 first_word = first_word c;
+ 77 }
+ 78 
+ 79 # перевіряємо чи є два дефіси (типовий формат групи, наприклад ПЗПІ-23-1)
+ 80 dash_count = 0;
+ 81 for (i = 1; i <= length(first_word); i++) {
+ 82 if (substr(first_word, i, 1) == "-") {
+ 83 dash_count++;
+ 84 }
+ 85 }
+ 86 
+ 87 if (dash_count == 2) {
+ 88 print first_word;
+ 89 }
+ 90 }' | sort | uniq)
+ 91
+ 92 if [ -z "$groups" ]; then
+ 93 rm -f "$temp_file"
+ 94 show_error "У файлі $file не знайдено академічних груп."
+ 95 fi
+ 96
+ 97 rm -f "$temp_file"
+ 98
+ 99 if [ $(echo "$groups" | wc -l) -eq 1 ]; then
+100 echo "$groups"
+101 return
+102 fi
+103
+104 PS3="Виберіть академічну групу (введіть номер): "
+105 select group in $groups; do
+106 if [ -n "$group" ]; then
+107 echo "$group"
+108 break
+109 else
+110 echo "Невірний вибір. Спробуйте ще раз."
+111 fi
+112 done
+113 }
+114
+115 process_file() {
+116 local file=$1
+117 local group=$2
+118 local quiet=$3
+119
+120 if [ ! -f "$file" ]; then
+121 show_error "Файл $file не знайдено."
+122 fi
+123
+124 if [ ! -r "$file" ]; then
+125 show_error "Файл $file неможливо прочитати."
+126 fi
+127
+128 local date_part=$(echo "$file" | grep -o "[0-9]\+_[0-9]\+_[0-9]\+")
+129 local output_file="Google_TimeTable_${date_part}.csv"
+130 local temp_file="Google_TimeTable_${date_part}.csv.tmp"
+131
+132 if ! iconv -f CP1251 -t UTF-8 "$file" >"$temp_file" 2>/dev/null; then
+133 rm -f "$temp_file"
+134 show_error "Не вдалося конвертувати кодування файлу з CP1251 в UTF-8."
+135 fi
+136
+137 sed 's/\r/\n/g' < "$temp_file" |awk -F '","' -v group="$group" '
+138 # заголовок
+139 NR == 1 {
+140 print $0;
+141 next;
+142 }
+143 
+144 # обробляємо решту рядків
+145 NR > 1 {
+146 tema = $1;
+147 gsub(/^"|"$/, "", tema);
+148 first_word = "";
+149 for (i = 1; i <= length(tema); i++) {
+150 c = substr(tema, i, 1);
+151 if (c == " ") break;
+152 first_word = first_word c;
+153 }
+154 if (first_word == group) {
+155 print $0;
+156 }
+157 }
+158 ' |
+159 sed 's/","/|/g' |
+160 sort -t'|' \
+161 -k2.7,2.10n \
+162 -k2.4,2.5n \
+163 -k2.1,2.2n \
+164 -k3.1,3.2n \
+165 -k3.4,3.5n | 
+166 sed 's/|/","/g' > "$temp_file.sorted"
+167
+168      echo "Subject,Start Date,Start Time,End Date,End Time,Description" >"$output_file"
+169
+170      awk -v FS='","' -v group="$group" '
+171      BEGIN {
+172          OFS = ",";
+173      }
+174
+175      NR > 1 {
+176          tema = $1;
+177          gsub(/^"|"$/, "", tema);
+178
+179          subject = "";
+180          group_prefix = group " -";
+181          if (index(tema, group_prefix) == 1) {
+182              subject = substr(tema, length(group_prefix) + 1);
+183          } else if (index(tema, "- ") == 1) {
+184              subject = substr(tema, 3);
+185          } else {
+186              subject = tema;
+187          }
+188          
+189          sub(/^[ \t]+/, "", subject);
+190          date = $2;
+191          
+192          # визначаємо тип заняття і оновлюємо лічильник для предмета
+193          if (index(tema, "Лк") > 0) {
+194              class_type = "Лк";
+195              count[subject, class_type]++;
+196              class_num = count[subject, class_type];
+197          }
+198          else if (index(tema, "Пз") > 0) {
+199              class_type = "Пз";
+200              count[subject, class_type]++;
+201              class_num = count[subject, class_type];
+202          }
+203          else if (index(tema, "Лб") > 0) {
+204              class_type = "Лб";
+205              if (date SUBSEP subject in lab_date) {
+206                  # той самий день що й попередня лабораторна, використовуємо той самий номер
+207                  class_num = lab_date[date, subject];
+208              } else {
+209                  class_type = "Лб";
+210                  count[subject, class_type]++;
+211                  class_num = count[subject, class_type];
+212              }
+213              # зберігаємо дату останньої лабораторної
+214              lab_date[date, subject] = count[subject, class_type];
+215          }
+216          else {
+217              class_num = "";
+218              class_type = "";
+219          }
+220
+221          if (class_num != "") {
+222              subject = subject "; №" class_num;
+223          }
+224          
+225          # форматуємо дати і час для формату Google Calendar
+226          split($2, start_date, "\\.");
+227          
+228          start_day = start_date[1] + 0;
+229          start_month = start_date[2] + 0;
+230          start_year = start_date[3] + 0;
+231          
+232          # перевіряємо на валідні компоненти дати (уникаємо 00/00/0000)
+233          if (start_day < 1 || start_month < 1 || start_year < 1) {
+234              start_date_formatted = "";
+235          } else {
+236              start_date_formatted = sprintf("%02d/%02d/%04d", start_month, start_day, start_year);
+237          }
+238          
+239          split($3, start_time, ":");
+240          start_hour = start_time[1] + 0;
+241          start_minute = start_time[2] + 0;
+242          
+243          # конвертація в 12-годинний формат
+244          if (start_hour > 12) {
+245              am_pm = "PM";
+246              display_hour = start_hour - 12;
+247          } else if (start_hour == 12) {
+248              am_pm = "PM";
+249              display_hour = 12;
+250          } else if (start_hour == 0) {
+251              am_pm = "AM";
+252              display_hour = 12;
+253          } else {
+254              am_pm = "AM";
+255              display_hour = start_hour;
+256          }
+257          
+258          start_time_formatted = sprintf("%d:%02d %s", display_hour, start_minute, am_pm);
+259          
+260          split($4, end_date, "\\.");
+261          
+262          end_day = end_date[1] + 0;
+263          end_month = end_date[2] + 0;
+264          end_year = end_date[3] + 0;
+265          
+266          # перевіряємо на валідні компоненти дати
+267          if (end_day < 1 || end_month < 1 || end_year < 1) {
+268              end_date_formatted = "";
+269          } else {
+270              end_date_formatted = sprintf("%02d/%02d/%04d", end_month, end_day, end_year);
+271          }
+272          
+273          split($5, end_time, ":");
+274          end_hour = end_time[1] + 0;
+275          end_minute = end_time[2] + 0;
+276          
+277          # конвертація в 12-годинний формат
+278          if (end_hour > 12) {
+279              am_pm = "PM";
+280              display_hour = end_hour - 12;
+281          } else if (end_hour == 12) {
+282              am_pm = "PM";
+283              display_hour = 12;
+284          } else if (end_hour == 0) {
+285              am_pm = "AM";
+286              display_hour = 12;
+287          } else {
+288              am_pm = "AM";
+289              display_hour = end_hour;
+290          }
+291          
+292          end_time_formatted = sprintf("%d:%02d %s", display_hour, end_minute, am_pm);
+293          
+294          if (start_date_formatted == "" || end_date_formatted == "") {
+295              printf("Увага: Пропускаємо запис з невалідною датою: %s\n", subject) > "/dev/stderr";
+296              next;
+297          }
+298          
+299          printf("\"%s\",%s,%s,%s,%s,%s\n", 
+300              subject, 
+301              start_date_formatted, 
+302              start_time_formatted, 
+303              end_date_formatted, 
+304              end_time_formatted, $12);
+305      }
+306      ' "$temp_file.sorted" >>"$output_file"
+307
+308      if [ $(wc -l <"$output_file") -le 1 ]; then
+309          echo "Увага: Для групи $group у файлі $file не знайдено записів." >&2
+310
+311          rm -f "$output_file" # Видаляємо файл з тільки заголовком
+312          group=$(select_group "$file")
+313          process_file "$file" "$group" "$quiet"
+314          return
+315      else
+316          if [ "$quiet" != "true" ]; then
+317              cat "$output_file"
+318          fi
+319          echo "Створено CSV файл для Google Calendar: $output_file" >&2
+320      fi
+321
+322      rm -f "$temp_file"
+323  }
+324
+325  quiet="false"
+326  while [ $# -gt 0 ]; do
+327      case "$1" in
+328      --help)
+329          show_help
+330          ;;
+331      --version)
+332          show_version
+333          ;;
+334      -q | --quiet)
+335          quiet="true"
+336          shift
+337          ;;
+338      *)
+339          break
+340          ;;
+341      esac
+342  done
+343
+344  group="$1"
+345  file="$2"
+346
+347  if [ -z "$file" ]; then
+348      file=$(select_file)
+349  fi
+350
+351  if [ -z "$group" ]; then
+352      group=$(select_group "$file")
+353  fi
+354
+355  process_file "$file" "$group" "$quiet"
+356
+357  exit 0

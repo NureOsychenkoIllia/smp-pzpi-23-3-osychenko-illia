@@ -1,0 +1,356 @@
+#!/bin/bash
+
+VERSION="1.0.0"
+
+show_help() {
+    cat <<EOF
+Використання: $0 [ПАРАМЕТРИ] [академ_група] [файл_із_cist.csv]
+
+Конвертує файл CSV з розкладом, експортований з CIST, у формат Google Calendar.
+
+Параметри:
+  --help                 Показати цю довідку та вийти
+  --version              Показати інформацію про версію та вийти
+  -q, --quiet            Не виводити інформацію в stdout
+
+Параметри:
+  академ_група           Шаблон назви академічної групи
+  файл_із_cist.csv       Експортований CSV файл з розкладом
+
+Якщо академічна група або вхідний CSV файл не вказані, скрипт
+надасть інтерактивні меню для їх вибору.
+
+Приклади:
+  $0 ПЗПІ-23-1 TimeTable_03_04_2025.csv
+  $0 --quiet ПЗПІ-23-1 TimeTable_03_04_2025.csv
+  $0 --help
+EOF
+    exit 0
+}
+
+show_version() {
+    echo "$0 версія $VERSION"
+    exit 0
+}
+
+show_error() {
+    echo "Помилка: $1" >&2
+    exit 1
+}
+
+select_file() {
+    local file_list=$(ls -1 TimeTable_??_??_20??.csv 2>/dev/null | sort)
+
+    if [ -z "$file_list" ]; then
+        show_error "У поточній директорії не знайдено CSV файлів з розкладом."
+    fi
+
+    PS3="Виберіть файл (введіть номер): "
+    select file in $file_list; do
+        if [ -n "$file" ]; then
+            echo "$file"
+            break
+        else
+            echo "Невірний вибір. Спробуйте ще раз."
+        fi
+    done
+}
+
+select_group() {
+    local file=$1
+    local temp_file="${file}.temp"
+
+    if ! iconv -f CP1251 -t UTF-8 "$file" >"$temp_file" 2>/dev/null; then
+        rm -f "$temp_file"
+        show_error "Не вдалося конвертувати кодування файлу з CP1251 в UTF-8."
+    fi
+
+    local groups=$(sed 's/\r/\n/g' <"$temp_file" | awk -F '","' 'NR>1 {
+        tema = $1; gsub(/^"|"$/, "", tema);
+        
+        first_word = "";
+        for (i = 1; i <= length(tema); i++) {
+            c = substr(tema, i, 1);
+            if (c == " ") break;
+            first_word = first_word c;
+        }
+        
+        dash_count = 0;
+        for (i = 1; i <= length(first_word); i++) {
+            if (substr(first_word, i, 1) == "-") {
+                dash_count++;
+            }
+        }
+        
+        if (dash_count == 2) {
+            print first_word;
+        }
+    }' | sort | uniq)
+
+    if [ -z "$groups" ]; then
+        rm -f "$temp_file"
+        show_error "У файлі $file не знайдено академічних груп."
+    fi
+
+    rm -f "$temp_file"
+
+    if [ $(echo "$groups" | wc -l) -eq 1 ]; then
+        echo "$groups"
+        return
+    fi
+
+    PS3="Виберіть академічну групу (введіть номер): "
+    select group in $groups; do
+        if [ -n "$group" ]; then
+            echo "$group"
+            break
+        else
+            echo "Невірний вибір. Спробуйте ще раз."
+        fi
+    done
+}
+
+process_file() {
+    local file=$1
+    local group=$2
+    local quiet=$3
+
+    if [ ! -f "$file" ]; then
+        show_error "Файл $file не знайдено."
+    fi
+
+    if [ ! -r "$file" ]; then
+        show_error "Файл $file неможливо прочитати."
+    fi
+
+    local date_part=$(echo "$file" | grep -o "[0-9]\+_[0-9]\+_[0-9]\+")
+    local output_file="Google_TimeTable_${date_part}.csv"
+    local temp_file="Google_TimeTable_${date_part}.csv.tmp"
+
+    if ! iconv -f CP1251 -t UTF-8 "$file" >"$temp_file" 2>/dev/null; then
+        rm -f "$temp_file"
+        show_error "Не вдалося конвертувати кодування файлу з CP1251 в UTF-8."
+    fi
+
+    sed 's/\r/\n/g' < "$temp_file" |awk -F '","' -v group="$group" '
+    # заголовок
+    NR == 1 {
+        print $0;
+        next;
+    }
+    
+    # обробляємо решту рядків
+    NR > 1 {
+        tema = $1;
+        gsub(/^"|"$/, "", tema);
+        first_word = "";
+        for (i = 1; i <= length(tema); i++) {
+            c = substr(tema, i, 1);
+            if (c == " ") break;
+            first_word = first_word c;
+        }
+        if (first_word == group) {
+            print $0;
+        }
+    }
+    ' |
+    sed 's/","/|/g' |
+    sort -t'|' \
+        -k2.7,2.10n \
+        -k2.4,2.5n \
+        -k2.1,2.2n \
+        -k3.1,3.2n \
+        -k3.4,3.5n | 
+    sed 's/|/","/g' > "$temp_file.sorted"
+
+    echo "Subject,Start Date,Start Time,End Date,End Time,Description" >"$output_file"
+
+    awk -v FS='","' -v group="$group" '
+    BEGIN {
+        OFS = ",";
+    }
+
+    NR > 1 {
+        tema = $1;
+        gsub(/^"|"$/, "", tema);
+
+        subject = "";
+        group_prefix = group " -";
+        if (index(tema, group_prefix) == 1) {
+            subject = substr(tema, length(group_prefix) + 1);
+        } else if (index(tema, "- ") == 1) {
+            subject = substr(tema, 3);
+        } else {
+            subject = tema;
+        }
+        
+        sub(/^[ \t]+/, "", subject);
+        date = $2;
+        
+        # визначаємо тип заняття і оновлюємо лічильник для предмета
+        if (index(tema, "Лк") > 0) {
+            class_type = "Лк";
+            count[subject, class_type]++;
+            class_num = count[subject, class_type];
+        }
+        else if (index(tema, "Пз") > 0) {
+            class_type = "Пз";
+            count[subject, class_type]++;
+            class_num = count[subject, class_type];
+        }
+        else if (index(tema, "Лб") > 0) {
+            class_type = "Лб";
+            if (date SUBSEP subject in lab_date) {
+                # той самий день що й попередня лабораторна, використовуємо той самий номер
+                class_num = lab_date[date, subject];
+            } else {
+                class_type = "Лб";
+                count[subject, class_type]++;
+                class_num = count[subject, class_type];
+            }
+            # зберігаємо дату останньої лабораторної
+            lab_date[date, subject] = count[subject, class_type];
+        }
+        else {
+            class_num = "";
+            class_type = "";
+        }
+
+        if (class_num != "") {
+            subject = subject "; №" class_num;
+        }
+        
+        # форматуємо дати і час для формату Google Calendar
+        split($2, start_date, "\\.");
+        
+        start_day = start_date[1] + 0;
+        start_month = start_date[2] + 0;
+        start_year = start_date[3] + 0;
+        
+        # перевіряємо на валідні компоненти дати (уникаємо 00/00/0000)
+        if (start_day < 1 || start_month < 1 || start_year < 1) {
+            start_date_formatted = "";
+        } else {
+            start_date_formatted = sprintf("%02d/%02d/%04d", start_month, start_day, start_year);
+        }
+        
+        split($3, start_time, ":");
+        start_hour = start_time[1] + 0;
+        start_minute = start_time[2] + 0;
+        
+        # конвертація в 12-годинний формат
+        if (start_hour > 12) {
+            am_pm = "PM";
+            display_hour = start_hour - 12;
+        } else if (start_hour == 12) {
+            am_pm = "PM";
+            display_hour = 12;
+        } else if (start_hour == 0) {
+            am_pm = "AM";
+            display_hour = 12;
+        } else {
+            am_pm = "AM";
+            display_hour = start_hour;
+        }
+        
+        start_time_formatted = sprintf("%d:%02d %s", display_hour, start_minute, am_pm);
+        
+        split($4, end_date, "\\.");
+        
+        end_day = end_date[1] + 0;
+        end_month = end_date[2] + 0;
+        end_year = end_date[3] + 0;
+        
+        # перевіряємо на валідні компоненти дати
+        if (end_day < 1 || end_month < 1 || end_year < 1) {
+            end_date_formatted = "";
+        } else {
+            end_date_formatted = sprintf("%02d/%02d/%04d", end_month, end_day, end_year);
+        }
+        
+        split($5, end_time, ":");
+        end_hour = end_time[1] + 0;
+        end_minute = end_time[2] + 0;
+        
+        # конвертація в 12-годинний формат
+        if (end_hour > 12) {
+            am_pm = "PM";
+            display_hour = end_hour - 12;
+        } else if (end_hour == 12) {
+            am_pm = "PM";
+            display_hour = 12;
+        } else if (end_hour == 0) {
+            am_pm = "AM";
+            display_hour = 12;
+        } else {
+            am_pm = "AM";
+            display_hour = end_hour;
+        }
+        
+        end_time_formatted = sprintf("%d:%02d %s", display_hour, end_minute, am_pm);
+        
+        if (start_date_formatted == "" || end_date_formatted == "") {
+            printf("Увага: Пропускаємо запис з невалідною датою: %s\n", subject) > "/dev/stderr";
+            next;
+        }
+        
+        printf("\"%s\",%s,%s,%s,%s,%s\n", 
+            subject, 
+            start_date_formatted, 
+            start_time_formatted, 
+            end_date_formatted, 
+            end_time_formatted, $12);
+    }
+    ' "$temp_file.sorted" >>"$output_file"
+    rm -f "$temp_file.sorted"
+
+    if [ $(wc -l <"$output_file") -le 1 ]; then
+        echo "Увага: Для групи $group у файлі $file не знайдено записів." >&2
+
+        rm -f "$output_file" # Видаляємо файл з тільки заголовком
+        group=$(select_group "$file")
+        process_file "$file" "$group" "$quiet"
+        return
+    else
+        if [ "$quiet" != "true" ]; then
+            cat "$output_file"
+        fi
+        echo "Створено CSV файл для Google Calendar: $output_file" >&2
+    fi
+
+    rm -f "$temp_file"
+}
+
+quiet="false"
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --help)
+        show_help
+        ;;
+    --version)
+        show_version
+        ;;
+    -q | --quiet)
+        quiet="true"
+        shift
+        ;;
+    *)
+        break
+        ;;
+    esac
+done
+
+group="$1"
+file="$2"
+
+if [ -z "$file" ]; then
+    file=$(select_file)
+fi
+
+if [ -z "$group" ]; then
+    group=$(select_group "$file")
+fi
+
+process_file "$file" "$group" "$quiet"
+
+exit 0
