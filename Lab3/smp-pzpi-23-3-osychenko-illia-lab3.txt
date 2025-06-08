@@ -1,0 +1,815 @@
+МІНІСТЕРСТВО ОСВІТИ І НАУКИ УКРАЇНИ
+ХАРКІВСЬКИЙ НАЦІОНАЛЬНИЙ УНІВЕРСИТЕТ РАДІОЕЛЕКТРОНІКИ
+Кафедра програмної інженерії
+Звіт
+з лабораторної роботи № 3
+з дисципліни: «Скриптові мови програмування»
+Виконав:
+ст. гр. ПЗПІ-23-3
+Осиченко І.О.
+Перевірив:
+ст. викл. каф. ПІ
+Сокорчук І. П.
+Харків – 2025
+
+1.1 Історія змін
+№ Дата Версія звіту Опис змін та виправлень
+1 08.06.2025 1.0 Створено розділ «Завдання»
+2 08.06.2025 1.0 Створено розділ «Опис виконаної роботи»
+3 08.06.2025 1.0 Додано тестування та програмний код
+
+1.2 Завдання
+Необхідно розробити веб-застосунок інтернет-магазину з використанням РНР,
+який складається з декількох взаємопов'язаних компонентів. Застосунок повинен
+містити сторінку товарів з можливістю додавання товарів до кошика, сторінку
+кошика з відображенням обраних товарів та загальної вартості, а також сторінку
+профілю користувача з можливістю встановлення імені та віку.
+Ключовими вимогами є використання PHP сесій для зберігання даних
+кошика та профілю між НТТР-запитами, обробка запитів методами GET та POST
+з належною валідацією введених користувачем даних. Також необхідно створити
+модульну архітектуру з окремими файлами функцій, шаблонів та стилів, реалізувати
+повний функціонал управління кошиком включаючи додавання, видалення товарів
+та очищення, а також забезпечити генерацію детального чека з інформацією про
+придбані товари.
+
+1.3 Опис виконаної роботи
+1.3.1 Створення базової структури проекту
+Для початку роботи було створено відповідну структуру файлів веб-застосунку,
+що забезпечує модульність та зручність подальшої підтримки коду. Проект
+організовано навколо головних сторінок index.php, basket.php та profile.php, які
+представляють основний функціонал застосунку. Допоміжні компоненти винесено
+в окремі файли: header.php та footer.php для шаблонів сторінок, functions.php
+для бізнес-логіки та style.css для стилізації. Окремо створено директорію data з
+файлом products.php, що містить інформацію про товари.
+Така архітектура дозволяє легко модифікувати окремі компоненти без впливу
+на інші частини системи та забезпечує принцип розділення відповідальності в коді.
+
+Модульна структура також спрощує налагодження та тестування окремих функцій
+застосунку.
+1.3.2 Створення файлу даних про товари
+Файл data/products.php реалізовано як РНР-скрипт, що повертає асоціативний
+масив з інформацією про доступні в магазині товари. Кожен товар представлено
+у вигляді пари ключ-значення, де ключ є унікальним ідентифікатором товару, а
+значення — масивом з назвою та ціною товару.
+<?php
+return [
+1 => ["Молоко пастеризоване", 12],
+2 => ["Хліб чорний", 9],
+3 => ["Сир білий", 21],
+4 => ["Сметана 20%", 25],
+5 => ["Кефір 1%", 19],
+6 => ["Вода газована", 18],
+7 => ['Печиво "Весна"', 14],
+];
+Використання інструкції return дозволяє завантажувати дані через include
+та відразу присвоювати їх змінній, що є зручним способом організації
+конфігураційних файлів у РНР. Такий підхід забезпечує легкість редагування
+асортименту товарів без необхідності внесення змін до основного коду застосунку.
+1.3.3 Створення системи шаблонів
+Файл header.php містить загальну шапку сайту з HTML-структурою документа,
+мета-тегами для коректного відображення на мобільних пристроях та підключенням
+CSS-стилів. Особливістю реалізації є динамічне відображення вітального
+повідомлення для авторизованих користувачів через перевірку наявності даних у
+сесії.
+Використання функції htmlspecialchars() при виведенні імені користувача
+забезпечує захист від XSS-атак, оскільки всі спеціальні HTML-символи
+конвертуються в безпечні сутності. Навігаційне меню реалізовано з використанням
+емодзі для покращення візуального сприйняття та інтуїтивності інтерфейсу.
+Файл footer.php містить підвал сайту з навігаційними посиланнями та
+інформацією про авторські права. Використання тегу виводу PHP <?= ?> для
+
+відображення поточного року через функцію date('Y') забезпечує автоматичне
+оновлення інформації про копірайт без необхідності ручного втручання.
+1.3.4 Створення основних функцій застосунку
+Файл functions.php містить всі ключові функції для роботи застосунку. Функція
+showProducts() генерує HTML-таблицю з переліком товарів та формами для
+додавання їх до кошика. Кожна форма містить прихований ідентифікатор товару та
+поле для введення кількості з атрибутами валідації min='1' max='99' , що обмежує
+діапазон допустимих значень.
+function showProducts($products)
+{
+echo "<div class='products-section'>";
+echo "<p>Список товарів:</p>";
+echo "<table border='0' cellspacing='0' cellpadding='5'>";
+// ... генерація заголовків таблиці
+$keys = array_keys($products);
+for ($i = 0; $i < count($keys); $i++) {
+$number = $keys[$i];
+$prod = $products[$number];
+$name = $prod[0];
+$price = $prod[1];
+// ... генерація рядків таблиці з формами
+echo "<form method='POST' action='index.php?action=add'
+class='add-to-cart-form'>";
+echo "<input type='hidden' name='addIdInput'
+value='$number'>";
+echo "<input type='number' name='addCountInput' min='1'
+max='99' value='1' class='count-input' placeholder='1'>";
+echo "<button type='submit' class='button'>Buy</button>";
+echo "</form>";
+}
+echo "</table>";
+echo "</div>";
+}
+Функція для роботи з кошиком addToCart() використовує РНР сесії для зберігання
+даних між НТТР-запитами. Це критично важливо для веб-застосунків, оскільки
+НТТР є протоколом без збереження стану. Функція перевіряє наявність товару в
+кошику та або збільшує його кількість, або додає новий товар з відповідними
+параметрами.
+Реалізація функції getReceipt() забезпечує генерацію детального чека з
+інформацією про кожен товар включаючи назву, ціну, кількість та загальну вартість.
+
+Функція також додає кнопки для видалення окремих товарів з кошика через GET-
+запити з відповідними параметрами. Підрахунок загальної суми відбувається в
+циклі з накопиченням вартості кожного товару.
+1.3.5 Створення функції профілю користувача
+Функція setProfile() реалізує комплексну валідацію даних профілю користувача
+з використанням регулярних виразів та логічних перевірок. Для валідації імені
+застосовується регулярний вираз \p{L}, що дозволяє коректно обробляти літери
+різних алфавітів Unicode, включаючи кирилицю.
+Валідація віку включає перевірку діапазону від 7 до 150 років. Функція
+збирає всі помилки валідації в масив та виводить їх користувачеві у разі виявлення
+некоректних даних. Передача параметра &$userProfile за посиланням дозволяє
+безпосередньо модифікувати профіль всередині функції.
+function setProfile(&$userProfile)
+{
+if (isset($_POST['profileSubmit'])) {
+$name = isset($_POST['name']) ? trim($_POST['name']) : '';
+$age = isset($_POST['age']) ? (int)$_POST['age'] : 0;
+$errors = [];
+if (strlen($name) == 0 || !preg_match('/\p{L}/u', $name)) {
+$errors[] = "Ім'я користувача не може бути порожнім і
+повинно містити хоча б одну літеру.";
+}
+if ($age < 7 || $age > 150) {
+$errors[] = "Користувач не може бути молодшим 7-ми або
+старшим 150-ти років.";
+}
+// ... обробка результатів валідації
+}
+}
+1.3.6 Створення головної сторінки
+Файл index.php реалізує основну логіку обробки запитів для додавання товарів
+до кошика. На початку файлу обов'язково викликається session_start() для
+ініціалізації сесії, що дозволяє працювати з даними між запитами. Використання
+require_once для підключення файлу функцій забезпечує критичну залежність,
+оскільки без цих функцій сторінка не може працювати коректно.
+
+Обробка GET-параметра action дозволяє визначити дію користувача та
+виконати відповідну логіку. При додаванні товару до кошика виконується
+валідація даних форми, перевірка існування товару в каталозі та оновлення
+або створення запису в сесії. Використання шаблону «Post-Redirect-Get» через
+header('Location: ...) та exit запобігає повторному надсиланню форми при
+оновленні сторінки.
+if (isset($_GET['action'])) {
+switch ($_GET['action']) {
+case 'add':
+if (isset($_POST['addIdInput']) &&
+is_numeric($_POST['addIdInput'])) {
+$id = (int)$_POST['addIdInput'];
+$addCount = isset($_POST['addCountInput']) &&
+$_POST['addCountInput'] > 0 ?
+(int)$_POST['addCountInput'] : 1;
+if (isset($products[$id])) {
+if (isset($basket[$id])) {
+$basket[$id]['quantity'] += $addCount;
+} else {
+$basket[$id] = [
+'name' => $products[$id][0],
+'price' => $products[$id][1],
+'quantity' => $addCount,
+];
+}
+}
+$_SESSION['cart'] = $basket;
+header('Location: index.php');
+exit;
+break;
+}
+}
+}
+1.3.7 Створення сторінки кошика
+Сторінка basket.php реалізує управління вмістом кошика через обробку різних
+типів дій. Дія remove дозволяє видалити конкретний товар за його ідентифікатором,
+а дія clear повністю очищає кошик. Використання функції unset() для видалення
+елементів з масиву сесії забезпечує коректне звільнення пам'яті та оновлення даних.
+Функціонал оплати реалізовано через POST-запит з кнопки «Сплатити».
+При обробці оплати використовується функція array_column() для ефективного
+отримання всіх цін товарів з многовимірного масиву та array_sum() для підрахунку
+загальної суми. Після успішної оплати генерується окрема HTML-сторінка з
+підтвердженням та сумою платежу.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pay'])) {
+$totalSum = isset($_SESSION['cart'])
+? array_sum(array_column($_SESSION['cart'], 'price'))
+: 0;
+// ... генерація сторінки підтвердження оплати
+
+exit;
+}
+Використання альтернативного синтаксису PHP з двокрапкою в умовних
+конструкціях робить код більш читабельним при змішуванні з HTML-розміткою. Це
+особливо корисно в шаблонах, де потрібно динамічно відображати різний контент
+залежно від стану застосунку.
+1.3.8 Створення сторінки профілю
+Сторінка profile.php забезпечує ініціалізацію профілю користувача зі значеннями
+за замовчуванням при першому відвідуванні. Використання оператора null
+coalescing ?? дозволяє елегантно обробляти відсутні значення та встановлювати
+значення за замовчуванням для полів форми.
+Безпечне виведення значень форми через htmlspecialchars() запобігає
+можливим атакам з вставкою спеціальних символів, які може сприйняти за
+програму браузер користувача, та забезпечує коректне відображення спеціальних
+символів у браузері.
+<input type="text" name="name" id="name" value="<?=
+htmlspecialchars($userProfile['name'] ?? '') ?>">
+<input type="number" name="age" id="age" value="<?=
+$userProfile['age'] ?? '' ?>">
+1.3.9 Тестування веб-застосунку
+Проведено тестування всіх компонентів системи для перевірки коректності роботи.
+Тестування додавання товарів до кошика включало перевірку збереження даних
+між сторінками, коректності підрахунку кількості та загальної вартості. Валідація
+профілю протестована з некоректними даними для перевірки відображення
+повідомлень про помилки та запобігання збереженню неправильних значень.
+
+Висновок
+У ході виконання лабораторної роботи було створено повнофункціональний веб-
+застосунок інтернет-магазину з використанням PHP та сучасних принципів веб-
+розробки. Застосунок демонструє використання PHP сесій для збереження стану
+між НТТР-запитами, що є важливим для інтерактивних веб-додатків.
+Реалізована модульна архітектура з чітким розділенням відповідальності
+між компонентами значно спрощує підтримку та розширення функціоналу в
+майбутньому. Створений застосунок повністю відповідає поставленим вимогам та
+демонструє практичне застосування ключових технологій серверної веб-розробки
+на РНР.
+
+ДОДАТОК А
+Відеозапис
+Відеозапис презентації результатів лабораторної роботи: https://youtu.be/_6UCOuiU3AI
+Хронологічний опис відеозапису:
+00:00 - Початкові відомості про застосунок
+00:27 – Логіка додавання товарів у кошик
+02:52 – Заголовок, стилі та навігація
+04:07 – Відображення списку товарів і кошика
+07:19 – Оплата та очищення кошика
+10:39 – Сторінка профілю та налаштування
+14:04 – Демонстрація роботи веб-застосунку
+
+ДОДАТОК Б
+Програмний код
+Б.1 Головна сторінка (index.php)
+GitHub репозиторій: https://github.com/NureOsychenkoIllia/smp-pzpi-23-3-osychenko-illia/blob/main/Lab3/smp-pzpi-23-3-osychenko-illia-lab3/index.php
+<?php
+session_start();
+require_once 'functions.php';
+$products = include 'data/products.php';
+$basket = isset($_SESSION['cart']) ? $_SESSION['cart'] : [];
+if (isset($_GET['action'])) {
+switch ($_GET['action']) {
+case 'add':
+if (isset($_POST['addIdInput']) &&
+is_numeric($_POST['addIdInput'])) {
+$id = (int)$_POST['addIdInput'];
+$addCount = isset($_POST['addCountInput']) &&
+$_POST['addCountInput'] > 0 ?
+(int)$_POST['addCountInput'] : 1;
+if (isset($products[$id])) {
+if (isset($basket[$id])) {
+$basket[$id]['quantity'] += $addCount;
+} else {
+$basket[$id] = [
+'name' => $products[$id][0],
+'price' => $products[$id][1],
+'quantity' => $addCount,
+];
+}
+}
+$_SESSION['cart'] = $basket;
+header('Location: index.php');
+exit;
+break;
+}
+}
+}
+include 'header.php';
+?>
+<div class="container">
+<h1>Список товарів</h1>
+<?php
+showProducts($products);
+?>
+
+Б.2 Сторінка кошика (basket.php)
+GitHub репозиторій: https://github.com/NureOsychenkoIllia/smp-pzpi-23-3-osychenko-illia/blob/main/Lab3/smp-pzpi-23-3-osychenko-illia-lab3/basket.php
+<div style="margin-top: 20px;">
+<h2>У КОШИКУ:</h2>
+<?php showBasket($basket); ?>
+</div>
+</div>
+<?php
+include 'footer.php';
+?>
+<?php
+session_start();
+require_once 'functions.php';
+$products = include 'data/products.php';
+if (isset($_GET['action'])) {
+switch ($_GET['action']) {
+case 'remove':
+if (isset($_GET['id']) && isset($_SESSION['cart']
+[$_GET['id']])) {
+unset($_SESSION['cart'][$_GET['id']]);
+}
+header('Location: basket.php');
+exit;
+break;
+case 'clear':
+$_SESSION['cart'] = [];
+header('Location: basket.php');
+exit;
+break;
+}
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pay'])) {
+$totalSum = isset($_SESSION['cart'])
+? array_sum(array_column($_SESSION['cart'], 'price'))
+: 0;
+?>
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Оплата успішна</title>
+</head>
+<body>
+<h1>Дякуємо!</h1>
+<p>сплачено: <?= number_format($totalSum, 2, '.', ' ') ?> грн</p>
+</body>
+</html>
+
+Б.3 Сторінка профілю (profile.php)
+<?php
+exit;
+}
+$basket = isset($_SESSION['cart']) ? $_SESSION['cart'] : [];
+include 'header.php';
+?>
+<div class="container">
+<h1>Кошик</h1>
+<?php if (empty($basket)): ?>
+<div class="empty-cart">
+<p>КОШИК ПОРОЖНІЙ</p>
+<a href="index.php">Перейти до покупок</a>
+</div>
+<?php else: ?>
+<?php getReceipt($basket); ?>
+<div class="cart-buttons">
+<a href="basket.php?action=clear" class="button cancel-
+button">Очистити</a>
+<form method="post" action="basket.php">
+<button type="submit" name="pay" class="button submit-button">Сплатити</button>
+</form>
+</div>
+<?php endif; ?>
+</div>
+<?php
+include 'footer.php';
+?>
+GitHub репозиторій: https://github.com/NureOsychenkoIllia/smp-pzpi-23-3-osychenko-illia/blob/main/Lab3/smp-pzpi-23-3-osychenko-illia-lab3/profile.php
+<?php
+session_start();
+require_once 'functions.php';
+if (!isset($_SESSION['userProfile'])) {
+$_SESSION['userProfile'] = ['name' => null, 'age' => null];
+}
+$userProfile = $_SESSION['userProfile'];
+$profileUpdated = setProfile($userProfile);
+$_SESSION['userProfile'] = $userProfile;
+include 'header.php';
+?>
+
+Б.4 Файл функцій (functions.php)
+<div class="container">
+<h1>Налаштування профілю</h1>
+<?php if ($profileUpdated): ?>
+<div class="success">
+Профіль встановлено: <?= $userProfile['name'] ?> (<?=
+$userProfile['age'] ?> років)
+</div>
+<?php endif; ?>
+<form method="POST" action="profile.php" class="profile-form">
+<div class="form-group">
+<label for="name">Ваше ім'я: </label>
+<input type="text" name="name" id="name" value="<?=
+htmlspecialchars($userProfile['name'] ?? '') ?>">
+</div>
+<div class="form-group">
+<label for="age">Ваш вік:</label>
+<input type="number" name="age" id="age" value="<?=
+$userProfile['age'] ?? '' ?>">
+</div>
+<button type="submit" name="profileSubmit" class="submit-
+button">Зберегти</button>
+</form>
+</div>
+<?php
+include 'footer.php';
+?>
+GitHub репозиторій: https://github.com/NureOsychenkoIllia/smp-pzpi-23-3-osychenko-illia/blob/main/Lab3/smp-pzpi-23-3-osychenko-illia-lab3/functions.php
+<?php
+function setProfile(&$userProfile)
+{
+if (isset($_POST['profileSubmit'])) {
+$name = isset($_POST['name']) ? trim($_POST['name']) : '';
+$age = isset($_POST['age']) ? (int)$_POST['age'] : 0;
+$errors = [];
+if (strlen($name) == 0 || !preg_match('/\p{L}/u', $name)) {
+$errors[] = "Ім'я користувача не може бути порожнім і
+повинно містити хоча б одну літеру.";
+}
+if ($age < 7 || $age > 150) {
+$errors[] = "Користувач не може бути молодшим 7-ми або
+старшим 150-ти років.";
+}
+if (empty($errors)) {
+
+$userProfile['name'] = $name;
+$userProfile['age'] = $age;
+$_SESSION['userProfile'] = $userProfile;
+return true;
+}
+foreach ($errors as $error) {
+echo "<div class='error'>$error</div>";
+}
+}
+return false;
+}
+function showBasket($basket)
+{
+if (empty($basket)) {
+echo "КОШИК ПОРОЖНІЙ\n";
+return;
+}
+echo "<table border='0' cellspacing='0' cellpadding='3'>";
+echo "<tr>";
+echo "<th>НАЗВА</th>";
+echo "<th>КІЛЬКІСТЬ</th>";
+echo "</tr>";
+foreach ($basket as $id => $item) {
+echo "<tr>";
+echo "<td>" . $item['name'] . "</td>";
+echo "<td>" . $item['quantity'] . "</td>";
+echo "</tr>";
+}
+echo "</table>";
+}
+function addToCart($id, $name, $price, $quantity) {
+if (!isset($_SESSION['cart'])) {
+$_SESSION['cart'] = [];
+}
+if (isset($_SESSION['cart'][$id])) {
+$_SESSION['cart'][$id]['quantity'] += $quantity;
+} else {
+$_SESSION['cart'][$id] = [
+'name' => $name,
+'price' => $price,
+'quantity' => $quantity
+];
+}
+}
+function removeFromCart($id) {
+if (isset($_SESSION['cart'][$id])) {
+unset($_SESSION['cart'][$id]);
+}
+}
+function clearCart() {
+$_SESSION['cart'] = [];
+
+function getCartItems() {
+if (isset($_SESSION['cart'])) {
+return $_SESSION['cart'];
+}
+return [];
+}
+function getCartTotal() {
+$total = 0;
+if (isset($_SESSION['cart'])) {
+foreach ($_SESSION['cart'] as $item) {
+$total += $item['price'] * $item['quantity'];
+}
+}
+return $total;
+}
+function getCartItemCount() {
+$count = 0;
+if (isset($_SESSION['cart'])) {
+foreach ($_SESSION['cart'] as $item) {
+$count += $item['quantity'];
+}
+}
+return $count;
+}
+function getReceipt($basket)
+{
+if (empty($basket)) {
+echo "КОШИК ПОРОЖНІЙ\n";
+return;
+}
+echo "\n<div class='receipt'>";
+echo "<h2>Чек:</h2>";
+echo "<table border='0' cellspacing='0' cellpadding='5'>";
+echo "<tr>";
+echo "<th></th>";
+echo "<th>НАЗВА</th>";
+echo "<th>ЦІНА</th>";
+echo "<th>КІЛЬКІСТЬ</th>";
+echo "<th>ВАРТІСТЬ</th>";
+echo "<th></th>";
+echo "</tr>";
+$counter = 1;
+$total = 0;
+foreach ($basket as $id => $item) {
+$itemCost = $item['price'] * $item['quantity'];
+echo "<tr>";
+echo "<td>$counter</td>";
+echo "<td>" . $item['name'] . "</td>";
+
+$price_str = (string)$item['price'];
+echo "<td>$price_str</td>";
+$qty_str = (string)$item['quantity'];
+echo "<td>$qty_str</td>";
+echo "<td>$itemCost</td>";
+echo "<td><a href='basket.php?action=remove&id=$id'
+class='remove-button'>[Remove]</a></td>";
+echo "</tr>";
+$total += $itemCost;
+$counter++;
+}
+echo "<tr class='total-row'>";
+echo "<td colspan='4'>РАЗОМ ДО СПЛАТИ:</td>";
+echo "<td>$total</td>";
+echo "<td></td>";
+echo "</tr>";
+echo "</table>";
+echo "</div>";
+}
+function showProducts($products)
+{
+echo "<div class='products-section'>";
+echo "<p>Список товарів:</p>";
+echo "<table border='0' cellspacing='0' cellpadding='5'>";
+echo "<tr>";
+echo "<th></th>";
+echo "<th>НАЗВА</th>";
+echo "<th>ЦІНА</th>";
+echo "<th></th>";
+echo "</tr>";
+$keys = array_keys($products);
+for ($i = 0; $i < count($keys); $i++) {
+$number = $keys[$i];
+$prod = $products[$number];
+$name = $prod[0];
+$price = $prod[1];
+echo "<tr>";
+echo "<td>$number</td>";
+echo "<td>$name</td>";
+$price_str = (string)$price;
+echo "<td>$price_str</td>";
+echo "<td>";
+echo "<form method='POST' action='index.php?action=add'
+class='add-to-cart-form'>";
+echo "<input type='hidden' name='addIdInput'
+value='$number'>";
+echo "<input type='number' name='addCountInput' min='1'
+max='99' value='1' class='count-input' placeholder='1'>";
+echo "<button type='submit' class='button'>Buy</button>";
+
+echo "</form>";
+echo "</td>";
+echo "</tr>";
+}
+echo "</table>";
+echo "</div>";
+}
+?>
+
+Б.5 Шапка сайту (header.php)
+GitHub репозиторій: https://github.com/NureOsychenkoIllia/smp-pzpi-23-3-osychenko-illia/blob/main/Lab3/smp-pzpi-23-3-osychenko-illia-lab3/header.php
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-
+scale=1.0">
+<title>ПРОДОВОЛЬЧИЙ МАГАЗИН "ВECHA"</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="header">
+<div class="nav">
+<a href="index.php">Products</a>
+<a href="basket.php">Cart</a>
+<a href="profile.php">Profile</a>
+</div>
+</div>
+<div class="container">
+<div class="shop-header">
+<h1>ПРОДОВОЛЬЧИЙ МАГАЗИН "ВЕСНА"</h1>
+<?php
+if (isset($_SESSION['userProfile']) &&
+$_SESSION['userProfile']['name']) {
+echo '<div class="user-greeting">Вітаємо, ' .
+htmlspecialchars($_SESSION['userProfile']['name']) .
+'!</div>';
+}
+?>
+</div>
+</div>
+Б.6 Підвал сайту (footer.php)
+GitHub репозиторій: https://github.com/NureOsychenkoIllia/smp-pzpi-23-3-osychenko-illia/blob/main/Lab3/smp-pzpi-23-3-osychenko-illia-lab3/footer.php
+
+<footer style="text-align: center; padding: 20px; margin-top: 50px;
+border-top: 1px solid #ddd;">
+<div class="container">
+<p><a href="index.php">Products</a> | <a
+href="basket.php">Cart</a> | <a href="profile.php">Profile</a></p>
+<p>&copy; <?= date('Y') ?> ПРОДОВОЛЬЧИЙ МАГАЗИН "ВЕСНА".
+Всі права захищені.</p>
+</div>
+</footer>
+</body>
+</html>
+Б.7 Дані про товари (data/products.php)
+GitHub репозиторій: https://github.com/NureOsychenkoIllia/smp-pzpi-23-3-osychenko-illia/blob/main/Lab3/smp-pzpi-23-3-osychenko-illia-lab3/data/products.php
+<?php
+return [
+1 => ["Молоко пастеризоване", 12],
+2 => ["Хліб чорний", 9],
+3 => ["Сир білий", 21],
+4 => ["Сметана 20%", 25],
+5 => ["Кефір 1%", 19],
+6 => ["Вода газована", 18],
+7 => ['Печиво "Весна"', 14],
+];
+Б.8 Стилі CSS (style.css)
+GitHub репозиторій: https://github.com/NureOsychenkoIllia/smp-pzpi-23-3-osychenko-illia/blob/main/Lab3/smp-pzpi-23-3-osychenko-illia-lab3/style.css
+body {
+font-family: Arial, sans-serif;
+margin: 0;
+padding: 0;
+background-color: #f9f9f9;
+}
+h1 {
+text-align: center;
+color: #333;
+margin-bottom: 20px;
+}
+.header {
+background-color: #fff;
+border-bottom: 1px solid #ddd;
+padding: 10px 0;
+margin-bottom: 20px;
+}
+
+.nav {
+max-width: 1200px;
+margin: 0 auto;
+display: flex;
+justify-content: space-between;
+align-items: center;
+}
+.nav a {
+text-decoration: none;
+color: #333;
+padding: 5px 15px;
+border-radius: 4px;
+}
+.nav a:hover {
+background-color: #f0f0f0;
+}
+.container {
+max-width: 1200px;
+margin: 0 auto;
+padding: 0 20px;
+}
+table {
+width: 100%;
+border-collapse: collapse;
+margin-bottom: 20px;
+}
+table th,
+table td {
+border: 1px solid #ddd;
+padding: 8px;
+text-align: left;
+}
+table th {
+background-color: #f2f2f2;
+}
+.quantity-input {
+width: 60px;
+padding: 5px;
+}
+.submit-button,
+.button {
+display: inline-block;
+padding: 10px 15px;
+border: none;
+border-radius: 4px;
+cursor: pointer;
+margin-right: 10px;
+font-size: 14px;
+text-decoration: none;
+background-color: #33aa53c;
+color:#dff0d8;
+line-height: 1;
+}
+
+.submit-button:hover,
+.button:hover {
+background-color: #36923b;
+}
+.cancel-button {
+background-color: #f44336;
+}
+.cancel-button:hover {
+background-color: #d32f2f;
+}
+.empty-cart {
+text-align: center;
+padding: 30px;
+background-color: #fff;
+border-radius: 4px;
+box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.empty-cart a {
+color: #4CAF50;
+text-decoration: none;
+font-weight: bold;
+}
+.empty-cart a:hover {
+text-decoration: underline;
+}
+.cart-buttons {
+display: flex;
+justify-content: flex-end;
+margin-top: 20px;
+}
+.total-row {
+font-weight: bold;
+}
+.remove-button {
+color: #f44336;
+text-decoration: none;
+}
+.shop-header {
+text-align: center;
+margin-bottom: 30px;
+}
+.user-greeting {
+font-size: 16px;
+color: #666;
+margin-top: 10px;
+}
+.success {
+background-color: #dff0d8;
+color: #3c763d;
+
+padding: 15px;
+margin-bottom: 20px;
+border-radius: 4px;
+}
+.error {
+background-color: #f2dede;
+color: #a94442;
+padding: 15px;
+margin-bottom: 20px;
+border-radius: 4px;
+}
+.profile-form {
+max-width: 500px;
+margin: 0 auto;
+}
+.form-group {
+margin-bottom: 15px;
+}
+.form-group label {
+display: block;
+margin-bottom: 5px;
+font-weight: bold;
+}
+.form-group input {
+width: 100%;
+padding: 8px;
+border: 1px solid #ddd;
+border-radius: 4px;
+}
+.receipt h2 {
+margin-top: 30px;
+}
+.add-to-cart-form {
+display: flex;
+align-items: center;
+}
+.count-input {
+width: 60px;
+margin-right: 10px;
+}
