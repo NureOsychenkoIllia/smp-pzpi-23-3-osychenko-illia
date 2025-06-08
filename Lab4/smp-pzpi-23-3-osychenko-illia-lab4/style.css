@@ -1,0 +1,269 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f9f9f9;
+}
+
+h1 {
+    text-align: center;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+.header {
+    background-color: #fff;
+    border-bottom: 1px solid #ddd;
+    padding: 10px 0;
+    margin-bottom: 20px;
+}
+
+.nav {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.nav a {
+    text-decoration: none;
+    color: #333;
+    padding: 5px 15px;
+    border-radius: 4px;
+}
+
+.nav a:hover {
+    background-color: #f0f0f0;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+}
+
+table th,
+table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+table th {
+    background-color: #f2f2f2;
+}
+
+.quantity-input {
+    width: 60px;
+    padding: 5px;
+}
+
+.submit-button,
+.button {
+    display: inline-block;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 10px;
+    font-size: 14px;
+    text-decoration: none;
+    background-color: #3aa53c;
+    color:#dff0d8;
+    line-height: 1;
+}
+
+.submit-button:hover,
+.button:hover {
+    background-color: #36923b;
+}
+
+.cancel-button {
+    background-color: #f44336;
+}
+
+.cancel-button:hover {
+    background-color: #d32f2f;
+}
+
+.empty-cart {
+    text-align: center;
+    padding: 30px;
+    background-color: #fff;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.empty-cart a {
+    color: #4CAF50;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.empty-cart a:hover {
+    text-decoration: underline;
+}
+
+.cart-buttons {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+.total-row {
+    font-weight: bold;
+}
+
+.remove-button {
+    color: #f44336;
+    text-decoration: none;
+}
+
+.shop-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.user-greeting {
+    font-size: 16px;
+    color: #666;
+    margin-top: 10px;
+}
+
+.success {
+    background-color: #dff0d8;
+    color: #3c763d;
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 4px;
+}
+
+.error {
+    background-color: #f2dede;
+    color: #a94442;
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 4px;
+}
+
+.profile-form {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.form-group input,
+.form-group textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.form-group input[type="file"] {
+    padding: 4px;
+    background-color: #fff;
+}
+
+.receipt h2 {
+    margin-top: 30px;
+}
+
+.add-to-cart-form {
+    display: flex;
+    align-items: center;
+}
+
+.count-input {
+    width: 60px;
+    margin-right: 10px;
+}
+
+/* Стилі для відображення фото */
+.profile-photo {
+    max-width: 200px;
+    height: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+.profile-photo-large {
+    max-width: 300px;
+    height: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+/* Стилі для інформації про профіль */
+.profile-info {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+}
+
+.profile-info h3 {
+    margin-top: 0;
+    color: #333;
+}
+
+.profile-info p {
+    margin: 10px 0;
+    line-height: 1.5;
+}
+
+/* Адаптивність */
+@media (max-width: 768px) {
+    .nav {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .profile-form {
+        max-width: 100%;
+    }
+    
+    .cart-buttons {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .add-to-cart-form {
+        flex-direction: column;
+        gap: 5px;
+    }
+}
+
+/* Стилі для логіна */
+.login-info {
+    text-align: center;
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #e7f3ff;
+    border-radius: 4px;
+    border: 1px solid #b3d9ff;
+}
+
+.login-info p {
+    margin: 5px 0;
+    color: #666;
+}
